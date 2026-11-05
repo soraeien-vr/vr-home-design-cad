@@ -22,6 +22,7 @@ public class FurniturePlacementTool : VRToolBase
 
     private GameObject previewObject;
     private float currentYRotation = 0f;
+    private float objectHalfHeight = 0f;
 
     public override void OnToolSelected()
     {
@@ -103,16 +104,18 @@ public class FurniturePlacementTool : VRToolBase
         {
             if (!previewObject.activeSelf) previewObject.SetActive(true);
 
-            // Позиция точки попадания луча
-            previewObject.transform.position = hit.point;
-
-            // Базовая ориентация по нормали (пол/стена) + дополнительный поворот от игрока по Y
+            // Базовая ориентация по нормали (пол/стена) + поворот игрока по Y
             Quaternion baseRotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
-            previewObject.transform.rotation = baseRotation * Quaternion.Euler(0, currentYRotation, 0);
+            Quaternion finalRotation = baseRotation * Quaternion.Euler(0, currentYRotation, 0);
+
+            // Позиция попадания + сдвиг вверх по нормали на половину высоты хитбокса
+            Vector3 adjustedPosition = hit.point + (hit.normal * objectHalfHeight);
+
+            previewObject.transform.position = adjustedPosition;
+            previewObject.transform.rotation = finalRotation;
         }
         else
         {
-            // Прячем предпросмотр, если луч улетает в пустоту
             if (previewObject.activeSelf) previewObject.SetActive(false);
         }
     }
@@ -129,9 +132,11 @@ public class FurniturePlacementTool : VRToolBase
 
         if (Physics.Raycast(ray, out RaycastHit hit, maxRayDistance, placementLayerMask))
         {
-            Vector3 spawnPosition = hit.point;
             Quaternion baseRotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
             Quaternion finalRotation = baseRotation * Quaternion.Euler(0, currentYRotation, 0);
+
+            // Применяем ту же логику смещения для реального спавна
+            Vector3 spawnPosition = hit.point + (hit.normal * objectHalfHeight);
 
             // Спавним реальный объект
             GameObject spawnedObj = Instantiate(selectedFurniturePrefab, spawnPosition, finalRotation);
@@ -161,6 +166,9 @@ public class FurniturePlacementTool : VRToolBase
         previewObject = Instantiate(selectedFurniturePrefab);
         previewObject.name = "GhostPreview_" + selectedFurniturePrefab.name;
 
+        // Вычисляем высоту объекта по его коллайдерам или рендерерам
+        CalculateObjectSize(previewObject);
+
         // Отключаем все коллайдеры, чтобы призрак не мешал рейкастам
         Collider[] colliders = previewObject.GetComponentsInChildren<Collider>();
         foreach (var col in colliders)
@@ -184,6 +192,41 @@ public class FurniturePlacementTool : VRToolBase
         }
 
         previewObject.SetActive(false);
+    }
+
+    private void CalculateObjectSize(GameObject obj)
+    {
+        objectHalfHeight = 0f;
+
+        // Сначала пытаемся найти Collider (предпочтительно, так как это хитбокс)
+        Collider[] colliders = obj.GetComponentsInChildren<Collider>();
+        if (colliders.Length > 0)
+        {
+            Bounds combinedBounds = colliders[0].bounds;
+            for (int i = 1; i < colliders.Length; i++)
+            {
+                combinedBounds.Encapsulate(colliders[i].bounds);
+            }
+
+            // Расстояние от центра объекта до его нижней точки по локальной оси Y
+            objectHalfHeight = obj.transform.InverseTransformPoint(combinedBounds.min).y;
+            // Берем модуль смещения (если pivot выше минимума хитбокса)
+            objectHalfHeight = Mathf.Abs(objectHalfHeight);
+            return;
+        }
+
+        // Запасной вариант: считаем по Renderer (если у префаба вообще нет коллайдеров)
+        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
+        if (renderers.Length > 0)
+        {
+            Bounds combinedBounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                combinedBounds.Encapsulate(renderers[i].bounds);
+            }
+
+            objectHalfHeight = Mathf.Abs(obj.transform.InverseTransformPoint(combinedBounds.min).y);
+        }
     }
 
     private void DestroyPreview()
