@@ -55,16 +55,17 @@ public class FurniturePlacementTool : VRToolBase
     {
         base.OnToolUpdate(rightControllerTransform);
 
-        // The menu button works even when the library is already open.
+        // Кнопка меню работает даже если библиотека уже открыта
         if (secondaryAction.action.triggered)
         {
             ToggleFurnitureLibrary();
         }
 
-        // Do not place furniture when the VR user presses a button inside the library.
+        // Не даем ставить мебель, если открыто меню библиотеки
         bool libraryOpen = furnitureFileMenu != null
             ? furnitureFileMenu.IsOpen
             : furnitureLibraryCanvas != null && furnitureLibraryCanvas.activeSelf;
+
         if (libraryOpen)
         {
             if (previewObject != null) previewObject.SetActive(false);
@@ -78,7 +79,6 @@ public class FurniturePlacementTool : VRToolBase
 
     private void HandleRotationInput()
     {
-        // Поддерживаем как Vector2 (значение стика/тачпада), так и float (ось)
         float inputX = 0f;
 
         if (rotateAction.action.activeControl?.valueType == typeof(Vector2))
@@ -90,7 +90,6 @@ public class FurniturePlacementTool : VRToolBase
             inputX = rotateAction.action.ReadValue<float>();
         }
 
-        // Вращаем предпросмотр по оси Y, если стик отклонен
         if (Mathf.Abs(inputX) > 0.1f)
         {
             currentYRotation += inputX * rotationSpeed * Time.deltaTime;
@@ -107,11 +106,9 @@ public class FurniturePlacementTool : VRToolBase
         {
             if (!previewObject.activeSelf) previewObject.SetActive(true);
 
-            // Базовая ориентация по нормали (пол/стена) + поворот игрока по Y
             Quaternion baseRotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
             Quaternion finalRotation = baseRotation * Quaternion.Euler(0, currentYRotation, 0);
 
-            // Позиция попадания + сдвиг вверх по нормали на половину высоты хитбокса
             Vector3 adjustedPosition = hit.point + (hit.normal * objectHalfHeight);
 
             previewObject.transform.position = adjustedPosition;
@@ -138,10 +135,8 @@ public class FurniturePlacementTool : VRToolBase
             Quaternion baseRotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
             Quaternion finalRotation = baseRotation * Quaternion.Euler(0, currentYRotation, 0);
 
-            // Применяем ту же логику смещения для реального спавна
             Vector3 spawnPosition = hit.point + (hit.normal * objectHalfHeight);
 
-            // Спавним реальный объект
             GameObject spawnedObj = Instantiate(selectedFurniturePrefab, spawnPosition, finalRotation);
 
             FurnitureObject furniture = spawnedObj.GetComponent<FurnitureObject>();
@@ -164,21 +159,17 @@ public class FurniturePlacementTool : VRToolBase
 
         if (selectedFurniturePrefab == null) return;
 
-        // Инстанциируем визуальную копию
         previewObject = Instantiate(selectedFurniturePrefab);
         previewObject.name = "GhostPreview_" + selectedFurniturePrefab.name;
 
-        // Вычисляем высоту объекта по его коллайдерам или рендерерам
         CalculateObjectSize(previewObject);
 
-        // Отключаем все коллайдеры, чтобы призрак не мешал рейкастам
         Collider[] colliders = previewObject.GetComponentsInChildren<Collider>();
         foreach (var col in colliders)
         {
             col.enabled = false;
         }
 
-        // Если задан прозрачный материал, применяем его к мешам
         if (previewMaterial != null)
         {
             Renderer[] renderers = previewObject.GetComponentsInChildren<Renderer>();
@@ -200,7 +191,6 @@ public class FurniturePlacementTool : VRToolBase
     {
         objectHalfHeight = 0f;
 
-        // Сначала пытаемся найти Collider (предпочтительно, так как это хитбокс)
         Collider[] colliders = obj.GetComponentsInChildren<Collider>();
         if (colliders.Length > 0)
         {
@@ -210,14 +200,11 @@ public class FurniturePlacementTool : VRToolBase
                 combinedBounds.Encapsulate(colliders[i].bounds);
             }
 
-            // Расстояние от центра объекта до его нижней точки по локальной оси Y
             objectHalfHeight = obj.transform.InverseTransformPoint(combinedBounds.min).y;
-            // Берем модуль смещения (если pivot выше минимума хитбокса)
             objectHalfHeight = Mathf.Abs(objectHalfHeight);
             return;
         }
 
-        // Запасной вариант: считаем по Renderer (если у префаба вообще нет коллайдеров)
         Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
         if (renderers.Length > 0)
         {
@@ -244,23 +231,74 @@ public class FurniturePlacementTool : VRToolBase
     {
         if (furnitureFileMenu != null)
         {
-            furnitureFileMenu.ToggleMenu();
+            // Проверяем, закрыто ли меню в данный момент
+            if (!furnitureFileMenu.IsOpen)
+            {
+                PositionMenuInFrontOfUser();
+                furnitureFileMenu.OpenMenu();
+            }
+            else
+            {
+                furnitureFileMenu.CloseMenu();
+            }
         }
         else if (furnitureLibraryCanvas != null)
         {
-            furnitureLibraryCanvas.SetActive(!furnitureLibraryCanvas.activeSelf);
+            bool willBeActive = !furnitureLibraryCanvas.activeSelf;
+            if (willBeActive)
+            {
+                PositionCanvasInFrontOfUser(furnitureLibraryCanvas);
+            }
+            furnitureLibraryCanvas.SetActive(willBeActive);
         }
     }
 
     /// <summary>
-    /// Вызывается при выборе нового объекта из будущей библиотеки
+    /// Переносит меню перед глазами игрока перед открытием
     /// </summary>
+    private void PositionMenuInFrontOfUser()
+    {
+        // Пытаемся найти камеру игрока (XR Camera / Main Camera)
+        Transform camTransform = Camera.main != null ? Camera.main.transform : null;
+        if (camTransform == null) return;
+
+        // Берем корневой объект меню (трансформ компонента furnitureFileMenu)
+        Transform menuTransform = furnitureFileMenu.transform;
+
+        // Ставим меню на расстоянии 1.5 метра перед лицом игрока на уровне глаз
+        Vector3 targetPosition = camTransform.position + camTransform.forward * 1.5f;
+        menuTransform.position = targetPosition;
+
+        // Поворачиваем меню лицом к игроку
+        Vector3 lookDirection = menuTransform.position - camTransform.position;
+        lookDirection.y = 0; // Оставляем меню вертикальным, убирая наклон вверх/вниз
+        if (lookDirection != Vector3.zero)
+        {
+            menuTransform.rotation = Quaternion.LookRotation(lookDirection);
+        }
+    }
+
+    private void PositionCanvasInFrontOfUser(GameObject canvasObj)
+    {
+        Transform camTransform = Camera.main != null ? Camera.main.transform : null;
+        if (camTransform == null) return;
+
+        Vector3 targetPosition = camTransform.position + camTransform.forward * 1.5f;
+        canvasObj.transform.position = targetPosition;
+
+        Vector3 lookDirection = canvasObj.transform.position - camTransform.position;
+        lookDirection.y = 0;
+        if (lookDirection != Vector3.zero)
+        {
+            canvasObj.transform.rotation = Quaternion.LookRotation(lookDirection);
+        }
+    }
+
     public void SetSelectedFurniture(GameObject newPrefab)
     {
-        Debug.Log($"[FurnitureTool] Открыто меню.");
+        Debug.Log($"[FurnitureTool] Выбран предмет: {newPrefab.name}");
         selectedFurniturePrefab = newPrefab;
 
-        // Пересоздаем призрак под новую выбранную модель
         if (gameObject.activeSelf)
         {
             CreatePreview();

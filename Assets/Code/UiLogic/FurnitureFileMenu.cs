@@ -54,6 +54,8 @@ public sealed class FurnitureFileMenu : MonoBehaviour
 
         if (refreshButton != null) refreshButton.onClick.AddListener(Refresh);
         if (backButton != null) backButton.onClick.AddListener(GoBack);
+
+        Debug.Log($"{rootFullPath} and {RootFolder}");
     }
 
     private void OnDestroy()
