@@ -138,6 +138,8 @@ public class FurniturePlacementTool : VRToolBase
             Vector3 spawnPosition = hit.point + (hit.normal * objectHalfHeight);
 
             GameObject spawnedObj = Instantiate(selectedFurniturePrefab, spawnPosition, finalRotation);
+            // Runtime GLB templates are intentionally inactive: their placed copies must be visible.
+            spawnedObj.SetActive(true);
 
             FurnitureObject furniture = spawnedObj.GetComponent<FurnitureObject>();
             if (furniture == null) furniture = spawnedObj.AddComponent<FurnitureObject>();

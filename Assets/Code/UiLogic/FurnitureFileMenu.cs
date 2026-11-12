@@ -18,8 +18,8 @@ public sealed class FurnitureFileMenu : MonoBehaviour
     [Header("Folder")]
     [Tooltip("Leave empty to use <Application.persistentDataPath>/Furniture")]
     [SerializeField] private string rootFolder = "";
-    [SerializeField] private bool includeAssetBundles = true;
-    [SerializeField] private bool includeGlb = false;
+    [SerializeField] private bool includeAssetBundles = false;
+    [SerializeField] private bool includeGlb = true;
     [SerializeField] private bool includeGltf = false;
     [SerializeField] private bool includeFbx = false;
     [SerializeField] private bool includeObj = false;
@@ -159,7 +159,7 @@ public sealed class FurnitureFileMenu : MonoBehaviour
             return;
         }
 
-        // Listener (FurnitureAssetBundleSelector.SelectFile) loads a prefab and calls
+        // Listener (FurnitureGlbLoader.SelectFile) loads a GameObject and calls
         // FurniturePlacementTool.SetSelectedFurniture(GameObject).
         onFurnitureFileSelected.Invoke(file);
         SetStatus("Selected: " + Path.GetFileName(file));
