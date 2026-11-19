@@ -298,10 +298,16 @@ public class FurniturePlacementTool : VRToolBase
 
     public void SetSelectedFurniture(GameObject newPrefab)
     {
+        if (newPrefab == null)
+        {
+            Debug.LogWarning("[FurnitureTool] Передан null вместо префаба мебели!");
+            return;
+        }
+
         Debug.Log($"[FurnitureTool] Выбран предмет: {newPrefab.name}");
         selectedFurniturePrefab = newPrefab;
 
-        if (gameObject.activeSelf)
+        if (IsSelected)
         {
             CreatePreview();
         }
